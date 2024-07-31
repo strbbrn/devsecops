@@ -19,10 +19,7 @@ jobs:
      uses: ./.github/workflows/deploy.yml
   health-check:
     uses: ./.github/workflows/health.yml
-    permissions:
-      contents: write
-      pull-requests: write
-      repository-projects: write
+    
     with: 
       DEPLOYMENT_TYPE: 'dev'
     secrets: inherit
