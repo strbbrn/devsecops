@@ -22,12 +22,14 @@ jobs:
     
     with: 
       DEPLOYMENT_TYPE: 'dev'
+      TOKEN: ${{ secrets.GITHUB_TOKEN }}
     secrets: inherit
 
   health-check-prod:
     uses: ./.github/workflows/health.yml
     with: 
       DEPLOYMENT_TYPE: 'prod'
+      TOKEN: ${{ secrets.GITHUB_TOKEN }}
     secrets: inherit
 
   test:
