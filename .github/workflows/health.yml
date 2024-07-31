@@ -9,10 +9,7 @@ on:
 jobs:
   health:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-      checks: write
+   
     steps:
       - name: Test variables
         run: |
