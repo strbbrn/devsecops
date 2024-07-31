@@ -18,6 +18,7 @@ jobs:
   deploy:
      uses: ./.github/workflows/deploy.yml
   health-check:
+    permissions: write-all
     uses: ./.github/workflows/health.yml
     with: 
       DEPLOYMENT_TYPE: 'dev'
