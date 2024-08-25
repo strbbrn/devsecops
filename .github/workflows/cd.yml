@@ -16,7 +16,7 @@ jobs:
     needs: deploy
     uses: ./.github/workflows/health.yml
     with: 
-      DEPLOYMENT_TYPE: 'dev'
+      DEPLOYMENT_TYPE: 'prod'
     secrets: inherit
 
   deploytoprod:
