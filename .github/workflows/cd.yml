@@ -6,11 +6,11 @@ on:
 jobs:
 
   deploy:
-   if: github.ref === 'refs/heads/develop'
-   uses: ./.github/workflows/deploy.yml
-   with: 
-    DEPLOYMENT_TYPE: 'dev'
-    secrets: inherit
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Deploy app
+        run: echo "develop"
     
   health-check-dev:
     needs: deploy
