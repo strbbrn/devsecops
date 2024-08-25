@@ -6,11 +6,11 @@ on:
 jobs:
 
   deploy:
-    runs-on: ubuntu-latest
+    
     if: github.ref == 'refs/heads/develop'
-    steps:
-      - name: Deploy app
-        run: echo "develop"
+    uses: ./.github/workflows/deploy.yml
+    with: 
+      DEPLOYMENT_TYPE: 'dev'
     
   health-check-dev:
     needs: deploy
@@ -20,17 +20,18 @@ jobs:
     secrets: inherit
 
   deploytoprod:
-    runs-on: ubuntu-latest
+    
     if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Deploy app
-        run: echo "prod"
+    uses: ./.github/workflows/deploy.yml
+    with: 
+      DEPLOYMENT_TYPE: 'dev'
+    secrets: inherit
   
   health-check-prod:
     needs: deploytoprod
     uses: ./.github/workflows/health.yml
     with: 
-      DEPLOYMENT_TYPE: 'dev'
+      DEPLOYMENT_TYPE: 'prod'
     secrets: inherit
 
   
