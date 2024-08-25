@@ -20,10 +20,11 @@ jobs:
     secrets: inherit
 
   deploytoprod:
-   if: github.ref === 'refs/heads/main'
-   uses: ./.github/workflows/deploy.yml
-   with: 
-    DEPLOYMENT_TYPE: 'dev'
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy app
+        run: echo "prod"
   
   health-check-prod:
     needs: deploytoprod
