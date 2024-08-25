@@ -1,0 +1,35 @@
+name: CD
+
+# Controls when the workflow will run
+on:
+  workflow_call:
+jobs:
+
+  deploy:
+   if: github.ref === 'refs/heads/develop'
+   uses: ./.github/workflows/deploy.yml
+   with: 
+    DEPLOYMENT_TYPE: 'dev'
+    secrets: inherit
+    
+  health-check-dev:
+    needs: deploy
+    uses: ./.github/workflows/health.yml
+    with: 
+      DEPLOYMENT_TYPE: 'dev'
+    secrets: inherit
+
+  deploytoprod:
+   if: github.ref === 'refs/heads/main'
+   uses: ./.github/workflows/deploy.yml
+   with: 
+    DEPLOYMENT_TYPE: 'dev'
+  
+  health-check-prod:
+    needs: deploytoprod
+    uses: ./.github/workflows/health.yml
+    with: 
+      DEPLOYMENT_TYPE: 'dev'
+    secrets: inherit
+
+  
