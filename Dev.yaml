@@ -1,0 +1,14 @@
+- name: Check Dev Deployment Status
+  run: |
+    DEPLOYMENT_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    "https://api.github.com/repos/${{ github.repository }}/deployments?environment=dev&ref=develop" | jq -r '.[0].id')
+    
+    STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/deployments/$DEPLOYMENT_ID/statuses" | jq -r '.[0].state')
+
+    if [ "$STATUS" != "success" ]; then
+      echo "Dev deployment was not successful. Aborting."
+      exit 1
+    fi
