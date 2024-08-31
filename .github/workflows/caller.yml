@@ -1,0 +1,8 @@
+name: Caller
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  caller:
+    uses: strbbrn/reuse/.github/workflows/reuseme.yaml@main
