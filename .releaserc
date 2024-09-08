@@ -3,8 +3,7 @@
     "main",
     {
       "name": "develop",
-      "prerelease": "dev",
-      "channel": "next"
+      "prerelease": "dev"
     },
     {
       "name": "release/*",
