@@ -1,7 +1,28 @@
 {
   "branches": [
-    { "name": "main", "prefix": "v" },
-    { "name": "develop", "prefix": "v", "suffix": "-dev" }
+    "main",
+    {
+      "name": "develop",
+      "prerelease": "dev"
+    },
+    {
+      "name": "release/*",
+      "prerelease": "rc",
+      "channel": "next"
+    },
+    {
+      "name": "hotfix/**",
+      "prerelease": "hotfix",
+      "channel": "hotfix"
+    },
+    {
+      "name": "bugfix/**",
+      "prerelease": "${name.split('/').slice(0, 2).join('-').toLowerCase()}"
+    },
+    {
+      "name": "feature/**",
+      "prerelease": "${name.split('/').slice(0, 2).join('-').toLowerCase()}"
+    }
   ],
   "plugins": [
     "@semantic-release/commit-analyzer",
