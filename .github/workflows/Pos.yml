@@ -1,0 +1,97 @@
+name: Trigger API Workflow
+
+on:
+  workflow_call:
+    inputs:
+      site:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      requester:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      operation:
+        required: true
+        type: string
+
+jobs:
+  call_api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install postgresql-client -y
+
+      - name: Retrieve seqno from PostgreSQL
+        id: get_seqno
+        run: |
+          # Setting timeout in milliseconds (e.g., 5000ms = 5 seconds)
+          export PGOPTIONS="--connect_timeout=10"  # Connection timeout in seconds
+
+          export PGPASSWORD="${{ secrets.DB_PASSWORD }}"
+
+          # Retrieve seqno with specified port, SSL mode, and timeout
+          seqno=$(psql -h ${{ secrets.DB_HOST }} \
+                       -U ${{ secrets.DB_USER }} \
+                       -d ${{ secrets.DB_NAME }} \
+                       -p ${{ secrets.DB_PORT }} \
+                       "sslmode=require" \
+                       -t -c "SELECT seqno FROM abcexampl ORDER BY seqno DESC LIMIT 1;")
+
+          # Trim any leading/trailing whitespaces
+          seqno=$(echo $seqno | xargs)
+
+          echo "Retrieved seqno: $seqno"
+          echo "::set-output name=seqno::$seqno"
+
+      - name: Obtain Access Token
+        id: get_token
+        run: |
+          response=$(curl -s -X POST "https://oauth.example.com/token" \
+            -d "grant_type=client_credentials" \
+            -d "client_id=${{ secrets.OAUTH_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.OAUTH_CLIENT_SECRET }}")
+
+          echo "OAuth response: $response"
+
+          access_token=$(echo "$response" | jq -r '.access_token')
+
+          echo "Access Token: $access_token"
+          echo "::set-output name=access_token::$access_token"
+
+      - name: Make API Call
+        id: call_api
+        run: |
+          response=$(curl -s -G "https://abc.com/api/job/start" \
+            --data-urlencode "site=${{ inputs.site }}" \
+            --data-urlencode "branch=${{ inputs.branch }}" \
+            --data-urlencode "requester=${{ inputs.requester }}" \
+            --data-urlencode "version=${{ inputs.version }}" \
+            --data-urlencode "operation=${{ inputs.operation }}" \
+            --data-urlencode "seqno=${{ steps.get_seqno.outputs.seqno }}" \
+            -H "Authorization: Bearer ${{ steps.get_token.outputs.access_token }}")
+
+          echo "API response: $response"
+
+          # Use jq to parse the JSON response and capture 'version' and 'status'
+          api_version=$(echo "$response" | jq -r '.message' | grep -oP '\d+')
+          api_status=$(echo "$response" | jq -r '.status')
+
+          echo "API Version: $api_version"
+          echo "API Status: $api_status"
+
+          # Set outputs for later steps to access
+          echo "::set-output name=version::$api_version"
+          echo "::set-output name=status::$api_status"
+
+      - name: Output Version and Status
+        run: |
+          echo "Captured Version: ${{ steps.call_api.outputs.version }}"
+          echo "Captured Status: ${{ steps.call_api.outputs.status }}"
