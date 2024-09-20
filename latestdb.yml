@@ -1,0 +1,159 @@
+name: Trigger API Workflow
+
+on:
+  workflow_call:
+    inputs:
+      site:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      requester:
+        required: true
+        type: string
+      operation:
+        required: true
+        type: string
+
+jobs:
+  call_api:
+    runs-on: ubuntu-latest
+
+    env: 
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_PORT: ${{ secrets.DB_PORT }}
+
+    steps:
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install postgresql-client -y
+
+      - name: Retrieve and Increment Seqno, Insert Record
+        id: insert_record
+        run: |
+          export PGPASSWORD="${{ env.DB_PASSWORD }}"
+
+          # Retrieve and increment seqno
+          current_seqno=$(psql -h ${{ env.DB_HOST }} \
+                          -U ${{ env.DB_USER }} \
+                          -d ${{ env.DB_NAME }} \
+                          -p ${{ env.DB_PORT }} \
+                          "sslmode=require" \
+                          -t -c "SELECT seqno FROM abcexampl ORDER BY seqno DESC LIMIT 1;")
+          current_seqno=$(echo $current_seqno | xargs)
+          new_seqno=$((current_seqno + 1))
+
+          echo "SEQNO: $new_seqno"
+          echo "SEQNO=$new_seqno" >> $GITHUB_ENV
+
+          # Insert new record
+          psql -h ${{ env.DB_HOST }} \
+               -U ${{ env.DB_USER }} \
+               -d ${{ env.DB_NAME }} \
+               -p ${{ env.DB_PORT }} \
+               "sslmode=require" \
+               -c "INSERT INTO abcexampl (seqno, rgs_id, site_abc, req, autop, stage_en, deploy_cd, created_by, created_date)
+                   VALUES ($new_seqno, 'rgs_val', '${{ inputs.site }}', 'req_val', 'autop_val', 'stage_val', 'REQUESTED', '${{ inputs.requester }}', NOW());"
+
+      - name: Determine Version Based on Operation
+        run: |
+          if [ "${{ inputs.operation }}" == "promote" ]; then
+            version="new"
+          elif [ "${{ inputs.operation }}" == "rollback" ]; then
+            # Call the API to get status for rollback
+            status_response=$(curl -s -k "https://abc.com/api/status/${{ inputs.site }}/${{ inputs.branch }}")
+
+            echo "Status API response: $status_response"
+
+            # Parse the JSON to find the current target and the valid previous target
+            current_target=$(echo "$status_response" | jq -r '.[] | select(.name=="current") | .target')
+            lower_valid_target=$(echo "$status_response" | jq -r '.[] | select(.status=="valid" and .name < "'$current_target'") | .name' | sort -r | head -n 1)
+
+            if [ -n "$lower_valid_target" ]; then
+              version=$lower_valid_target
+            else
+              echo "No valid previous target found for rollback"
+              exit 1
+            fi
+          else
+            echo "Invalid operation: ${{ inputs.operation }}"
+            exit 1
+          fi
+
+          echo "VERSION=$version" >> $GITHUB_ENV
+          echo "Version determined: $version"
+
+      - name: Obtain Access Token
+        run: |
+          response=$(curl -s -k -X POST "https://oauth.example.com/token" \
+            -d "grant_type=client_credentials" \
+            -d "client_id=${{ secrets.OAUTH_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.OAUTH_CLIENT_SECRET }}")
+
+          access_token=$(echo "$response" | jq -r '.access_token')
+
+          echo "ACCESS_TOKEN=$access_token" >> $GITHUB_ENV
+          echo "Access token obtained."
+
+      - name: Make API Call
+        run: |
+          response=$(curl -s -k -G "https://abc.com/api/job/start" \
+            --data-urlencode "site=${{ inputs.site }}" \
+            --data-urlencode "branch=${{ inputs.branch }}" \
+            --data-urlencode "requester=${{ inputs.requester }}" \
+            --data-urlencode "version=${{ env.VERSION }}" \
+            --data-urlencode "operation=${{ inputs.operation }}" \
+            --data-urlencode "seqno=${{ env.SEQNO }}" \
+            -H "Authorization: Bearer $ACCESS_TOKEN")
+
+          echo "API response: $response"
+
+          api_status=$(echo "$response" | jq -r '.status')
+
+          if [ "$api_status" != "success" ]; then
+            api_message=$(echo "$response" | jq -r '.message')
+            echo "API call failed with status: $api_status"
+            echo "API_MESSAGE=$api_message" >> $GITHUB_ENV
+            exit 1
+          fi
+
+          api_version=$(echo "$response" | jq -r '.message' | grep -oP '\d+' | sed -n 2p)
+
+          echo "API_VERSION=$api_version" >> $GITHUB_ENV
+          echo "API_STATUS=$api_status" >> $GITHUB_ENV
+
+      - name: Update Record in Database
+        run: |
+          export PGPASSWORD="${{ env.DB_PASSWORD }}"
+
+          if [ "$API_STATUS" == "success" ]; then
+            deploy_cd="SUCCESS"
+            version=$API_VERSION
+          else
+            deploy_cd="FAILURE"
+            version="NULL"
+            message=$API_MESSAGE
+            echo "API failed with message: $message"
+          fi
+
+          # Update the record in the database
+          psql -h ${{ env.DB_HOST }} \
+               -U ${{ env.DB_USER }} \
+               -d ${{ env.DB_NAME }} \
+               -p ${{ env.DB_PORT }} \
+               "sslmode=require" \
+               -c "UPDATE abcexampl
+                   SET deploy_cd='$deploy_cd', version='$version'
+                   WHERE seqno=${{ env.SEQNO }};"
+
+      - name: Output Final Status and Version
+        run: |
+          if [ "$API_STATUS" == "success" ]; then
+            echo "API call succeeded. Captured Version: $API_VERSION"
+          else
+            echo "API call failed with message: $API_MESSAGE"
