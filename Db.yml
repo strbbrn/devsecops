@@ -1,0 +1,117 @@
+name: Trigger API Workflow
+
+on:
+  workflow_call:
+    inputs:
+      site:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      requester:
+        required: true
+        type: string
+      operation:
+        required: true
+        type: string
+
+jobs:
+  call_api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install postgresql-client -y
+
+      - name: Retrieve seqno from PostgreSQL
+        id: get_seqno
+        run: |
+          export PGPASSWORD="${{ secrets.DB_PASSWORD }}"
+          seqno=$(psql -h ${{ secrets.DB_HOST }} \
+                       -U ${{ secrets.DB_USER }} \
+                       -d ${{ secrets.DB_NAME }} \
+                       -p ${{ secrets.DB_PORT }} \
+                       "sslmode=require" \
+                       -t -c "SELECT seqno FROM abcexampl ORDER BY seqno DESC LIMIT 1;")
+          seqno=$(echo $seqno | xargs)
+          echo "Retrieved seqno: $seqno"
+          echo "::set-output name=seqno::$seqno"
+
+      - name: Determine Version Based on Operation
+        id: determine_version
+        run: |
+          if [ "${{ inputs.operation }}" == "promote" ]; then
+            version="new"
+          elif [ "${{ inputs.operation }}" == "rollback" ]; then
+            # Call the API to get status for rollback
+            status_response=$(curl -s -k "https://abc.com/api/status/${{ inputs.site }}/${{ inputs.branch }}")
+
+            echo "Status API response: $status_response"
+
+            # Parse the JSON to find the current target and the valid previous target
+            current_target=$(echo "$status_response" | jq -r '.[] | select(.name=="current") | .target')
+            lower_valid_target=$(echo "$status_response" | jq -r '.[] | select(.status=="valid" and .name < "'$current_target'") | .name' | sort -r | head -n 1)
+
+            if [ -n "$lower_valid_target" ]; then
+              version=$lower_valid_target
+            else
+              echo "No valid previous target found for rollback"
+              exit 1
+            fi
+          else
+            echo "Invalid operation: ${{ inputs.operation }}"
+            exit 1
+          fi
+
+          echo "Determined version: $version"
+          echo "::set-output name=version::$version"
+
+      - name: Obtain Access Token
+        id: get_token
+        run: |
+          response=$(curl -s -k -X POST "https://oauth.example.com/token" \
+            -d "grant_type=client_credentials" \
+            -d "client_id=${{ secrets.OAUTH_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.OAUTH_CLIENT_SECRET }}")
+
+          echo "OAuth response: $response"
+          access_token=$(echo "$response" | jq -r '.access_token')
+          echo "::set-output name=access_token::$access_token"
+
+      - name: Make API Call
+        id: call_api
+        run: |
+          response=$(curl -s -k -G "https://abc.com/api/job/start" \
+            --data-urlencode "site=${{ inputs.site }}" \
+            --data-urlencode "branch=${{ inputs.branch }}" \
+            --data-urlencode "requester=${{ inputs.requester }}" \
+            --data-urlencode "version=${{ steps.determine_version.outputs.version }}" \
+            --data-urlencode "operation=${{ inputs.operation }}" \
+            --data-urlencode "seqno=${{ steps.get_seqno.outputs.seqno }}" \
+            -H "Authorization: Bearer ${{ steps.get_token.outputs.access_token }}")
+
+          echo "API response: $response"
+
+          # Extract the status from the response
+          api_status=$(echo "$response" | jq -r '.status')
+
+          # Check if the status is 'success'
+          if [ "$api_status" != "success" ]; then
+            echo "API call failed with status: $api_status"
+            exit 1
+          fi
+
+          # If status is success, extract the version
+          api_version=$(echo "$response" | jq -r '.message' | grep -oP '\d+')
+
+          echo "API Version: $api_version"
+          echo "::set-output name=version::$api_version"
+          echo "::set-output name=status::$api_status"
+
+      - name: Output Version and Status
+        run: |
+          echo "Captured Version: ${{ steps.call_api.outputs.version }}"
+          echo "Captured Status: ${{ steps.call_api.outputs.status }}"
