@@ -1,0 +1,53 @@
+name: Access and Validate Webpage
+
+on:
+  workflow_dispatch:
+
+jobs:
+  access_webpage:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Set up Python environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install Python dependencies
+      run: |
+        pip install requests beautifulsoup4
+
+    - name: Access webpage and check status and title
+      run: |
+        python -c "
+import requests
+from bs4 import BeautifulSoup
+
+# Define the URL and expected title
+url = 'https://example.com/your-webpage'
+expected_title = 'Your Expected Title'
+
+# Perform the HTTP GET request
+response = requests.get(url, auth=(\"${{ secrets.USERNAME }}\", \"${{ secrets.PASSWORD }}\"))
+
+# Check if status code is 200
+if response.status_code == 200:
+    print('Status code is 200')
+
+    # Parse the HTML content using BeautifulSoup
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Extract the title tag
+    title = soup.title.string if soup.title else None
+
+    # Validate the title
+    if title == expected_title:
+        print(f'Title matches: {title}')
+        exit(0)
+    else:
+        print(f'Title does not match. Expected: {expected_title}, Found: {title}')
+        exit(1)
+else:
+    print(f'Failed to access the webpage. Status code: {response.status_code}')
+    exit(1)
+        "
