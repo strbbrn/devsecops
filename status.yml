@@ -1,0 +1,40 @@
+name: Access and Validate Webpage
+
+on:
+  workflow_dispatch:
+
+jobs:
+  access_webpage:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Access webpage and check status and title
+      run: |
+        # Define the URL and expected title
+        URL="https://example.com/your-webpage"
+        EXPECTED_TITLE="Your Expected Title"
+
+        # Perform the curl request and capture the output and status code
+        RESPONSE=$(curl --ntlm -u "${{ secrets.USERNAME }}:${{ secrets.PASSWORD }}" -s -w "%{http_code}" "$URL")
+        STATUS_CODE="${RESPONSE: -3}"
+        HTML_CONTENT="${RESPONSE::-3}"
+
+        # Check if status code is 200
+        if [ "$STATUS_CODE" -eq 200 ]; then
+          echo "Status code is 200"
+          
+          # Extract the title from the HTML content
+          TITLE=$(echo "$HTML_CONTENT" | grep -oP '(?<=<title>)(.*?)(?=</title>)')
+
+          # Validate the title
+          if [ "$TITLE" = "$EXPECTED_TITLE" ]; then
+            echo "Title matches: $TITLE"
+            exit 0
+          else
+            echo "Title does not match. Expected: $EXPECTED_TITLE, Found: $TITLE"
+            exit 1
+          fi
+        else
+          echo "Failed to access the webpage. Status code: $STATUS_CODE"
+          exit 1
+        fi
