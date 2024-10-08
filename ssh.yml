@@ -1,0 +1,57 @@
+name: Deploy and Health Check
+
+on: [push]
+
+jobs:
+  deploy-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install sshpass and curl
+        run: |
+          sudo apt-get update
+          sudo apt-get install sshpass curl
+
+      - name: SSH into the server, clone branch, and configure
+        env:
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $SSH_USERNAME@<server_ip> <<EOF
+          
+          # Navigate to the desired directory or clone repository
+          cd /path/to/your/app || exit
+
+          # Clone the specific branch from the repository
+          git clone -b your-branch-name https://your-repo-url.git || exit
+          cd your-repo-name || exit
+
+          # Run any necessary configurations (replace with your commands)
+          echo "Running configuration..."
+          <your_config_command_1>
+          <your_config_command_2>
+          
+          # Example: Start/restart services (adjust as needed)
+          sudo systemctl restart your-app-service || exit
+
+          EOF
+
+      - name: Health Check of API
+        run: |
+          # Perform a health check on the endpoint using curl
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://abc.com/api/history)
+          
+          # If the response is not 200, fail the workflow
+          if [ "$response" -ne 200 ]; then
+            echo "Health check failed. Expected 200, got $response."
+            exit 1
+          fi
+          
+          echo "Health check passed. Endpoint returned HTTP status $response."
+
+      - name: Print API Response (optional)
+        run: |
+          # Print the response from the API to see the output (JSON list)
+          curl https://abc.com/api/history | jq .
