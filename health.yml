@@ -1,0 +1,21 @@
+- name: Health Check of API
+  run: |
+    # Perform a health check on the endpoint using curl
+    response=$(curl -s -w "%{http_code}" -o response.json https://abc.com/api/rest)
+
+    # Extract the HTTP status code
+    status_code=$(tail -n1 response.json)
+
+    # Check if status code is 200
+    if [ "$status_code" -ne 200 ]; then
+      echo "Health check failed. Expected HTTP 200, got $status_code."
+      exit 1
+    fi
+
+    # Check if the JSON response contains a list with content
+    if ! jq -e 'length > 0' response.json >/dev/null; then
+      echo "Health check failed. The response does not contain a list with content."
+      exit 1
+    fi
+
+    echo "Health check passed. API returned HTTP status $status_code and a valid list."
