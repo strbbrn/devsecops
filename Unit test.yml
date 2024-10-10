@@ -1,0 +1,50 @@
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  unit_tests:
+    name: Run unit tests with coverage
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup msbuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2.0.0
+
+    - name: Restore NuGet packages
+      run: nuget restore 
+
+    - name: Install coverlet.collector
+      run: nuget install coverlet.collector
+
+    - name: Build the solution
+      run: msbuild  /p:Configuration=Debug
+
+    - name: Create TestResults directory
+      run: mkdir TestResults
+
+    - name: Run tests with coverage
+      run: |
+        & "$(vswhere -property installationPath)\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" abc-test/bin/Debug/abc-test.dll /collect:"XPlat Code Coverage" /logger:trx /ResultsDirectory:TestResults
+
+    - name: Convert coverage report to SonarQube format
+      run: |
+        reportgenerator "-reports:TestResults/*.xml" "-targetdir:TestResults/coverage" "-reporttypes:SonarQube"
+      
+    - name: Upload coverage report to SonarQube
+      run: |
+        sonar-scanner \
+          -Dsonar.projectKey=my_project_key \
+          -Dsonar.organization=my_organization \
+          -Dsonar.host.url=https://sonarcloud.io \
+          -Dsonar.login=$SONAR_TOKEN \
+          -Dsonar.cs.vstest.reportsPaths="TestResults/*.trx" \
+          -Dsonar.coverageReportPaths="TestResults/coverage/SonarQube.xml"
